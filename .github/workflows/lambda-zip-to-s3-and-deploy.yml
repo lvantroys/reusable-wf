@@ -1,0 +1,154 @@
+name: lambda-zip-to-s3-and-deploy
+
+on:
+  workflow_call:
+    inputs:
+      aws_region:
+        type: string
+        default: "us-east-1"
+        description: "AWS region to use"
+      code_dir:
+        type: string
+        default: "src"
+        description: "Directory with Lambda code"
+      install_cmd:
+        type: string
+        default: ""
+        description: 'Optional: e.g. "pip install -r requirements.txt -t ." or "npm ci"'
+      runtime_hint:
+        type: string
+        default: "python"
+        description: "Convenience setup: python | node | none"
+      artifact_name:
+        type: string
+        default: "lambda.zip"
+        description: "The output ZIP filename"
+      s3_bucket:
+        type: string
+        default: "s3-build-artifacts-prod"
+        description: "Artifacts bucket"
+      s3_prefix:
+        type: string
+        default: "lambda-artifacts/"
+        description: "Key prefix inside the bucket"
+      lambda_function_name:
+        type: string
+        default: "mySimplyPythonFunction"
+        description: "Target Lambda function name or ARN"
+      publish_version:
+        type: boolean
+        default: true
+        description: "Publish a new version after code update?"
+      update_alias:
+        type: string
+        default: ""
+        description: "If set, move this alias to the new version (e.g., prod)"
+      exclude_glob:
+        type: string
+        default: "*.pyc .pytest_cache/* node_modules/.cache/*"
+        description: "Space-separated patterns excluded from ZIP"
+    secrets:
+      aws_role_arn:
+        required: true
+        description: "IAM role ARN assumed via OIDC"
+
+    outputs:
+      s3_key:
+        description: "Final S3 key used for the ZIP"
+        value: ${{ jobs.deploy.outputs.s3_key }}
+      published_version:
+        description: "New Lambda version (if publish_version)"
+        value: ${{ jobs.deploy.outputs.published_version }}
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    outputs:
+      s3_key: ${{ steps.upload.outputs.key }}
+      published_version: ${{ steps.publish.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Optional runtime setup
+      - name: Setup Python
+        if: ${{ inputs.runtime_hint == 'python' }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Setup Node
+        if: ${{ inputs.runtime_hint == 'node' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # Optional dependency install/build
+      - name: Install/build (optional)
+        if: ${{ inputs.install_cmd != '' }}
+        run: ${{ inputs.install_cmd }}
+        working-directory: ${{ inputs.code_dir }}
+
+      - name: Create ZIP archive
+        run: |
+          cd "${{ inputs.code_dir }}"
+          IFS=' ' read -r -a EXCLUDES <<< "${{ inputs.exclude_glob }}"
+          EX_ARGS=()
+          for patt in "${EXCLUDES[@]}"; do
+            [ -n "$patt" ] && EX_ARGS+=("-x" "$patt")
+          done
+          zip -r "../${{ inputs.artifact_name }}" . "${EX_ARGS[@]}"
+          cd -
+          sha256sum "${{ inputs.artifact_name }}" | tee "${{ inputs.artifact_name }}.sha256"
+          ls -lh "${{ inputs.artifact_name }}"
+
+      - name: Configure AWS (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.aws_role_arn }}
+          aws-region: ${{ inputs.aws_region }}
+
+      - name: Upload ZIP to S3
+        id: upload
+        env:
+          BUCKET: ${{ inputs.s3_bucket }}
+          PREFIX: ${{ inputs.s3_prefix }}
+          ARTIFACT: ${{ inputs.artifact_name }}
+        run: |
+          # Key pattern: <prefix>/<repo>/<function>/<sha>/<artifact>
+          KEY="${PREFIX}${GITHUB_REPOSITORY}/${{ inputs.lambda_function_name }}/${GITHUB_SHA}/${ARTIFACT}"
+          aws s3 cp "${ARTIFACT}" "s3://${BUCKET}/${KEY}"
+          aws s3 cp "${ARTIFACT}.sha256" "s3://${BUCKET}/${KEY}.sha256"
+          echo "key=${KEY}" >> "${GITHUB_OUTPUT}"
+          echo "Uploaded to s3://${BUCKET}/${KEY}"
+
+      - name: Update Lambda from S3
+        id: update
+        run: |
+          aws lambda update-function-code \
+            --function-name "${{ inputs.lambda_function_name }}" \
+            --s3-bucket "${{ inputs.s3_bucket }}" \
+            --s3-key "${{ steps.upload.outputs.key }}" \
+            --query 'LastModified' --output text
+
+      - name: Publish new version (optional)
+        if: ${{ inputs.publish_version }}
+        id: publish
+        run: |
+          VER=$(aws lambda publish-version \
+                 --function-name "${{ inputs.lambda_function_name }}" \
+                 --query 'Version' --output text)
+          echo "version=${VER}" >> "$GITHUB_OUTPUT"
+          echo "Published version: ${VER}"
+
+      - name: Move alias (optional)
+        if: ${{ inputs.publish_version && inputs.update_alias != '' }}
+        run: |
+          aws lambda update-alias \
+            --function-name "${{ inputs.lambda_function_name }}" \
+            --name "${{ inputs.update_alias }}" \
+            --function-version "${{ steps.publish.outputs.version }}"
+

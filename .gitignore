@@ -1,0 +1,107 @@
+# -----------------------------
+# OS / Editors
+# -----------------------------
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+
+# -----------------------------
+# Secrets & Env (never commit)
+# -----------------------------
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.crt
+*.gpg
+*.agekey
+.sops.yaml
+**/credentials*
+**/*_creds.*
+*.kubeconfig
+*.kubeconfig.*
+
+# -----------------------------
+# Local testing with "act"
+# -----------------------------
+.act/
+act.log
+
+# -----------------------------
+# Node / JS (for JS/TS actions or helper scripts)
+# -----------------------------
+node_modules/
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+# Build outputs (ignored globally) …
+dist/
+out/
+build/
+tmp/
+.cache/
+# …but KEEP compiled bundles for published JS actions
+!actions/**/dist/**
+!actions/**/action.yml
+!actions/**/README.md
+
+# -----------------------------
+# Python (if helper scripts)
+# -----------------------------
+__pycache__/
+*.py[cod]
+*.pyi
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# -----------------------------
+# Go (if helper tools)
+# -----------------------------
+bin/
+*.exe
+
+# -----------------------------
+# Docker (build caches)
+# -----------------------------
+**/.docker-buildx-cache/
+**/.docker/
+**/.tmp/
+
+# -----------------------------
+# Terraform (often used in CI)
+# -----------------------------
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.*
+crash.log
+crash.*.log
+terraform.tfvars
+terraform.tfvars.json
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# -----------------------------
+# Reports / Artifacts
+# -----------------------------
+coverage/
+reports/
+
+# -----------------------------
+# Ensure workflows & local actions are tracked
+# -----------------------------
+!.github/
+!.github/workflows/
+!.github/workflows/*.yml
+!.github/workflows/*.yaml
+!.github/actions/
+!.github/actions/**
