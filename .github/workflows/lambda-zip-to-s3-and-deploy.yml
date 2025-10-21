@@ -141,6 +141,10 @@ jobs:
             --s3-key "${{ steps.upload.outputs.key }}" \
             --query 'LastModified' --output text
 
+      - name: Wait for function to finish updating
+        run: |
+          aws lambda wait function-updated --function-name mySimplyPythonFunction
+
       - name: Publish new version (optional)
         if: ${{ inputs.publish_version }}
         id: publish
