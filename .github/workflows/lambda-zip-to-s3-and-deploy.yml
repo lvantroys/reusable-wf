@@ -89,8 +89,8 @@ jobs:
       # Optional dependency install/build
       - name: Install/build (optional)
         if: ${{ inputs.install_cmd != '' }}
-        run: ${{ inputs.install_cmd }}
         working-directory: ${{ inputs.code_dir }}
+        run: ${{ inputs.install_cmd }}
 
       - name: Create ZIP archive
         run: |
@@ -104,6 +104,13 @@ jobs:
           cd -
           sha256sum "${{ inputs.artifact_name }}" | tee "${{ inputs.artifact_name }}.sha256"
           ls -lh "${{ inputs.artifact_name }}"
+
+      - name: Check OIDC availability
+        run: |
+          echo "Request URL present? ${ACTIONS_ID_TOKEN_REQUEST_URL:+yes}"
+          echo "Request token present? ${ACTIONS_ID_TOKEN_REQUEST_TOKEN:+yes}"
+          curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com" >/dev/null && echo "OIDC token OK"
 
       - name: Configure AWS (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
