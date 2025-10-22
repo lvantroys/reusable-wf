@@ -15,6 +15,10 @@ on:
         type: string
         default: ""
         description: 'Optional: e.g. "pip install -r requirements.txt -t ." or "npm ci"'
+      test_coverage_cmd:
+        type: string
+        default: ""
+        description: 'e.g. "pytest -q --cov=src/ --cov-report=term-missing --cov-report=xml --cov-report=html" or "npm ci"'
       runtime_hint:
         type: string
         default: "python"
@@ -92,6 +96,27 @@ jobs:
         working-directory: ${{ inputs.code_dir }}
         run: ${{ inputs.install_cmd }}
 
+      - name: Unit tests
+        if: ${{ inputs.test_coverage_cmd != '' }}
+        run: ${{ inputs.test_coverage_cmd }}
+
+        
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@v2
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            -Dsonar.organization=${{ secrets.SONAR_ORG }}
+            -Dsonar.projectKey=mySimplyPythonFunction
+            -Dsonar.projectName=mySimplyPythonFunction
+            -Dsonar.python.version=3.11
+            -Dsonar.python.coverage.reportPaths=coverage.xml
+            # Optional PR decoration (auto if PR), explicit if needed:
+            -Dsonar.pullrequest.key=${{ github.event.pull_request.number }}
+            -Dsonar.pullrequest.branch=${{ github.head_ref }}
+            -Dsonar.pullrequest.base=${{ github.base_ref }}
+      
       - name: Create ZIP archive
         run: |
           cd "${{ inputs.code_dir }}"
