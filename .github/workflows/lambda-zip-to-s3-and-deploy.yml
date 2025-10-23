@@ -15,6 +15,10 @@ on:
         type: string
         default: ""
         description: 'Optional: e.g. "pip install -r requirements.txt -t ." or "npm ci"'
+      install_test_cmd:
+        type: string
+        default: ""
+        description: 'Optional: e.g. "pip install -r requirements.txt -t ." or "npm ci"'
       test_coverage_cmd:
         type: string
         default: ""
@@ -93,8 +97,10 @@ jobs:
       # Optional dependency install/build
       - name: Install/build (optional)
         if: ${{ inputs.install_cmd != '' }}
-        working-directory: ${{ inputs.code_dir }}
-        run: ${{ inputs.install_cmd }}
+        # working-directory: ${{ inputs.code_dir }}
+        run: |
+          ${{ inputs.install_cmd }}
+          ${{ inputs.install_test_cmd }}
 
       - name: Unit tests
         if: ${{ inputs.test_coverage_cmd != '' }}
