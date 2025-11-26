@@ -1,0 +1,94 @@
+name: Reusable – Build Python Docker image
+
+on:
+  workflow_call:
+    inputs:
+      image_name:
+        description: "Name of the image (without registry or owner)"
+        required: true
+        type: string
+      context:
+        description: "Build context"
+        required: false
+        type: string
+        default: .
+      dockerfile:
+        description: "Path to Dockerfile"
+        required: false
+        type: string
+        default: ./Dockerfile
+      registry:
+        description: "Registry hostname (e.g. ghcr.io or docker.io)"
+        required: false
+        type: string
+        default: ghcr.io
+      push:
+        description: "Whether to push the image"
+        required: false
+        type: boolean
+        default: false
+    secrets:
+      registry_username:
+        description: "Registry username (needed for Docker Hub or other registries)"
+        required: false
+      registry_password:
+        description: "Registry password / token"
+        required: false
+
+jobs:
+  build-docker-image:
+    name: Build Docker image
+    runs-on: ubuntu-latest
+
+    env:
+      REGISTRY: ${{ inputs.registry }}
+      IMAGE_NAME: ${{ inputs.image_name }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Login for GHCR using GITHUB_TOKEN
+      - name: Login to GHCR
+        if: inputs.push == true && inputs.registry == 'ghcr.io'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Login for Docker Hub or other registries with provided secrets
+      - name: Login to custom registry
+        if: inputs.push == true && inputs.registry != 'ghcr.io'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ inputs.registry }}
+          username: ${{ secrets.registry_username }}
+          password: ${{ secrets.registry_password }}
+
+      - name: Compute image ID and tags
+        id: vars
+        run: |
+          IMAGE_ID=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}
+          echo "image_id=$IMAGE_ID" >> "$GITHUB_OUTPUT"
+          echo "tag_sha=$IMAGE_ID:sha-${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          echo "tag_latest=$IMAGE_ID:latest" >> "$GITHUB_OUTPUT"
+
+      - name: Build (and optionally push) image
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ inputs.context }}
+          file: ${{ inputs.dockerfile }}
+          push: ${{ inputs.push }}
+          tags: |
+            ${{ steps.vars.outputs.tag_sha }}
+            ${{ steps.vars.outputs.tag_latest }}
+
+      - name: Show built image tags
+        run: |
+          echo "Built image:"
+          echo "  ${{ steps.vars.outputs.tag_sha }}"
+          echo "  ${{ steps.vars.outputs.tag_latest }}"
